@@ -1,0 +1,1 @@
+# escanner-inventario
