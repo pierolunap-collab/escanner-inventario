@@ -1,0 +1,181 @@
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Escáner de inventario</title>
+  <script src="https://unpkg.com/@zxing/library@0.21.3/umd/index.min.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f1f5f9;
+      padding: 20px;
+      color: #172033;
+    }
+    main {
+      max-width: 480px;
+      margin: auto;
+      background: white;
+      padding: 20px;
+      border-radius: 16px;
+    }
+    h1 { color: #1d4ed8; font-size: 24px; }
+    input, button {
+      width: 100%;
+      padding: 14px;
+      margin: 8px 0;
+      box-sizing: border-box;
+      font-size: 16px;
+      border-radius: 8px;
+    }
+    input { border: 1px solid #cbd5e1; }
+    button {
+      border: 0;
+      background: #1d4ed8;
+      color: white;
+      font-weight: bold;
+    }
+    button:disabled { opacity: .6; }
+    #video {
+      display: none;
+      width: 100%;
+      margin-top: 12px;
+      border-radius: 10px;
+      background: black;
+    }
+    #mensaje { line-height: 1.5; overflow-wrap: anywhere; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>📦 Escáner de inventario</h1>
+  <p>Escanea el código de barras para consultar su ubicación.</p>
+
+  <button id="iniciar" onclick="iniciarCamara()">
+    📷 Activar cámara
+  </button>
+
+  <video id="video" muted playsinline></video>
+
+  <button id="detener" onclick="detenerCamara()" disabled>
+    Detener cámara
+  </button>
+
+  <hr>
+
+  <label for="codigo">O escribe el código manualmente</label>
+  <input id="codigo" placeholder="Código de barras">
+
+  <button onclick="consultarManual()">Consultar producto</button>
+  <p id="mensaje" role="status" aria-live="polite"></p>
+</main>
+
+<script>
+  https://script.google.com/macros/s/AKfycbwXb0L8jLyzP3Pgt5jB5elqJTqhlY2EBTPvP0xENiaw4-G98ljeBRPniy06IlpPXetr3g/exec
+  const APP_URL = 'https://script.google.com/macros/s/AKfycbwXb0L8jLyzP3Pgt5jB5elqJTqhlY2EBTPvP0xENiaw4-G98ljeBRPniy06IlpPXetr3g/exec;
+
+  let lector = null;
+  let controles = null;
+  let procesando = false;
+
+  function mostrar(texto) {
+    document.getElementById('mensaje').textContent = texto;
+  }
+
+  function validarURL() {
+    if (APP_URL.includes('PEGA_AQUI')) {
+      mostrar('Primero configura la URL de tu aplicación de Apps Script.');
+      return false;
+    }
+    return true;
+  }
+
+  function abrirProducto(codigo) {
+    codigo = String(codigo || '').trim();
+    if (!codigo || !validarURL()) return;
+
+    const destino = new URL(APP_URL);
+    destino.searchParams.set('codigo', codigo);
+    window.location.href = destino.toString();
+  }
+
+  function consultarManual() {
+    abrirProducto(document.getElementById('codigo').value);
+  }
+
+  async function iniciarCamara() {
+    if (!window.isSecureContext ||
+        !navigator.mediaDevices?.getUserMedia) {
+      mostrar('La cámara requiere una página HTTPS y un navegador compatible.');
+      return;
+    }
+
+    if (typeof ZXing === 'undefined') {
+      mostrar('No se cargó el lector. Comprueba tu conexión a internet.');
+      return;
+    }
+
+    detenerCamara();
+    procesando = false;
+    document.getElementById('iniciar').disabled = true;
+    mostrar('Solicitando permiso para usar la cámara...');
+
+    try {
+      lector = new ZXing.BrowserMultiFormatReader();
+
+      document.getElementById('video').style.display = 'block';
+      document.getElementById('detener').disabled = false;
+
+      controles = await lector.decodeFromConstraints(
+        {
+          audio: false,
+          video: { facingMode: { ideal: 'environment' } }
+        },
+        document.getElementById('video'),
+        (resultado, error) => {
+          if (resultado && !procesando) {
+            procesando = true;
+            const codigo = resultado.getText();
+            detenerCamara();
+            abrirProducto(codigo);
+          }
+        }
+      );
+
+      mostrar('Cámara activa. Apunta al código de barras.');
+    } catch (e) {
+      detenerCamara();
+      mostrar('No se pudo abrir la cámara: ' +
+        (e.message || e.name || 'error desconocido') +
+        '. Revisa los permisos del navegador.');
+    } finally {
+      document.getElementById('iniciar').disabled = false;
+    }
+  }
+
+  function detenerCamara() {
+    try {
+      if (controles && controles.stop) controles.stop();
+    } catch (e) {}
+    controles = null;
+
+    try {
+      if (lector) lector.reset();
+    } catch (e) {}
+    lector = null;
+
+    const video = document.getElementById('video');
+    if (video.srcObject) {
+      video.srcObject.getTracks().forEach(t => t.stop());
+      video.srcObject = null;
+    }
+
+    video.style.display = 'none';
+    document.getElementById('detener').disabled = true;
+  }
+
+  window.addEventListener('pagehide', detenerCamara);
+</script>
+</body>
+</html>
