@@ -5,34 +5,36 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Escáner de inventario</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/@zxing/browser@0.1.5/umd/zxing-browser.min.js"></script>
+
   <style>
     body {
       margin: 0;
-      padding: 20px;
-      background: #f2f5fa;
+      padding: 18px;
       font-family: Arial, sans-serif;
+      background: #f3f6fb;
       color: #202938;
     }
     main {
-      max-width: 560px;
+      max-width: 550px;
       margin: 20px auto;
       padding: 22px;
-      background: white;
       border-radius: 14px;
+      background: white;
       box-shadow: 0 3px 14px #0001;
     }
-    h1 { font-size: 24px; }
     button, input {
       width: 100%;
       box-sizing: border-box;
       min-height: 46px;
-      margin: 7px 0;
       padding: 12px;
-      border-radius: 8px;
+      margin: 7px 0;
       font-size: 16px;
+      border-radius: 8px;
     }
     button {
-      border: 0;
+      border: none;
       background: #174ea6;
       color: white;
       font-weight: bold;
@@ -43,31 +45,22 @@
     video {
       display: none;
       width: 100%;
-      margin-top: 14px;
-      border-radius: 10px;
+      margin-top: 12px;
+      border-radius: 8px;
       background: #111;
     }
-    #estado {
-      margin-top: 14px;
-      overflow-wrap: anywhere;
-      line-height: 1.5;
-    }
-    #codigoLeido {
-      font-size: 20px;
-      font-weight: bold;
-      overflow-wrap: anywhere;
-    }
+    #estado { margin-top: 14px; line-height: 1.5; overflow-wrap: anywhere; }
   </style>
 </head>
 <body>
 <main>
-  <h1>📦 Escáner de inventario</h1>
+  <h1>📷 Escáner de inventario</h1>
   <p>Activa la cámara y apunta al código de barras.</p>
 
-  <button id="activar">📷 Activar cámara</button>
+  <button id="activar">Activar cámara</button>
   <button id="detener" disabled>Detener cámara</button>
 
-  <video id="video" playsinline muted></video>
+  <video id="video" muted playsinline></video>
 
   <p id="estado" role="status" aria-live="polite">
     Pulsa «Activar cámara» para comenzar.
@@ -75,120 +68,25 @@
 
   <hr>
 
-  <label for="codigo"><strong>O escribe el código manualmente</strong></label>
-  <input id="codigo" type="text" placeholder="Código de barras">
+  <label for="codigo"><strong>Introducir código manualmente</strong></label>
+  <input id="codigo" type="text" placeholder="Ejemplo: 7909883387594">
   <button id="enviar">Enviar código a la aplicación</button>
 </main>
 
-<script src="https://cdn.jsdelivr.net/npm/@zxing/browser@0.1.5/umd/zxing-browser.min.js"></script>
 <script>
-  const activar = document.getElementById('activar');
-  const detener = document.getElementById('detener');
   const video = document.getElementById('video');
   const estado = document.getElementById('estado');
   const campo = document.getElementById('codigo');
-  const enviar = document.getElementById('enviar');
+  const activar = document.getElementById('activar');
+  const detener = document.getElementById('detener');
 
   let lector = null;
   let controles = null;
   let ocupado = false;
+  let codigoEnviado = false;
 
   function mensaje(texto) {
     estado.textContent = texto;
-  }
-
-  
-function recibirCodigo(codigo) {
-  codigo = String(codigo || '').trim();
-
-  if (!codigo) {
-    mensaje('Escribe o escanea un código de barras.');
-    return;
-  }
-
-  campo.value = codigo;
-
-  if (window.opener && !window.opener.closed) {
-    window.opener.postMessage({
-      tipo: 'CODIGO_BARRAS',
-      codigo: codigo
-    }, '*');
-
-    mensaje(
-      'Código enviado: ' + codigo +
-      '. Regresa a la pestaña de Control de inventario.'
-    );
-  } else {
-    mensaje(
-      'Código leído: ' + codigo +
-      '. No se encontró la ventana de Control de inventario. ' +
-      'Abre primero la aplicación principal y luego pulsa Abrir lector de cámara.'
-    );
-  }
-
-  detenerCamara();
-}
-
-  async function activarCamara() {
-    if (ocupado) return;
-    ocupado = true;
-    activar.disabled = true;
-    mensaje('Solicitando acceso a la cámara...');
-
-    try {
-      if (!window.isSecureContext) {
-        throw new Error(
-          'La página debe abrirse mediante HTTPS para utilizar la cámara.'
-        );
-      }
-
-      if (!navigator.mediaDevices ||
-          !navigator.mediaDevices.getUserMedia) {
-        throw new Error(
-          'Este navegador no permite acceder a la cámara. Abre la página en Chrome.'
-        );
-      }
-
-      if (!window.ZXingBrowser) {
-        throw new Error(
-          'No se pudo cargar el lector de códigos. Revisa tu conexión a Internet y recarga la página.'
-        );
-      }
-
-      lector = new ZXingBrowser.BrowserMultiFormatReader();
-      video.style.display = 'block';
-
-      controles = await lector.decodeFromVideoDevice(
-        undefined,
-        video,
-        (resultado, error) => {
-          if (resultado) {
-            recibirCodigo(resultado.getText());
-          }
-        }
-      );
-
-      detener.disabled = false;
-      mensaje('Cámara activada. Apunta al código de barras.');
-    } catch (error) {
-      detenerCamara();
-      let detalle = error && error.message
-        ? error.message
-        : String(error);
-
-      if (error && error.name === 'NotAllowedError') {
-        detalle = 'Permiso de cámara denegado. En Chrome, pulsa el candado junto a la dirección, permite Cámara y vuelve a intentarlo.';
-      } else if (error && error.name === 'NotFoundError') {
-        detalle = 'No se encontró una cámara disponible en este dispositivo.';
-      } else if (error && error.name === 'NotReadableError') {
-        detalle = 'La cámara está siendo utilizada por otra aplicación. Ciérrala y vuelve a intentarlo.';
-      }
-
-      mensaje('No se pudo activar la cámara: ' + detalle);
-    } finally {
-      ocupado = false;
-      activar.disabled = false;
-    }
   }
 
   function detenerCamara() {
@@ -209,25 +107,111 @@ function recibirCodigo(codigo) {
 
     video.style.display = 'none';
     detener.disabled = true;
+    activar.disabled = false;
+    ocupado = false;
   }
 
-  activar.addEventListener('click', activarCamara);
-  detener.addEventListener('click', () => {
+  function enviarCodigo() {
+    const codigo = campo.value.trim();
+
+    if (!codigo) {
+      mensaje('Escribe o escanea un código primero.');
+      return;
+    }
+
+    if (!window.opener || window.opener.closed) {
+      mensaje(
+        'Código leído: ' + codigo +
+        '. No hay una ventana principal conectada. Abre primero Control de inventario y luego su botón Abrir lector de cámara.'
+      );
+      return;
+    }
+
+    window.opener.postMessage({
+      tipo: 'CODIGO_BARRAS',
+      codigo: codigo
+    }, '*');
+
+    mensaje(
+      'Código enviado: ' + codigo +
+      '. Regresa a la pestaña Control de inventario.'
+    );
+
+    detenerCamara();
+  }
+
+  async function activarCamara() {
+    if (ocupado) return;
+
+    ocupado = true;
+    activar.disabled = true;
+    mensaje('Cargando lector y solicitando permiso de cámara...');
+
+    try {
+      if (!navigator.mediaDevices ||
+          !navigator.mediaDevices.getUserMedia) {
+        throw new Error(
+          'Este navegador no permite acceder a la cámara. Abre esta página con HTTPS en Chrome.'
+        );
+      }
+
+      if (!window.ZXingBrowser) {
+        throw new Error(
+          'La librería ZXing no cargó. Comprueba tu conexión a Internet y vuelve a cargar la página.'
+        );
+      }
+
+      lector = new ZXingBrowser.BrowserMultiFormatReader();
+      video.style.display = 'block';
+
+      controles = await lector.decodeFromVideoDevice(
+        undefined,
+        video,
+        function(resultado, error) {
+          if (resultado && !codigoEnviado) {
+            codigoEnviado = true;
+            campo.value = resultado.getText();
+            mensaje('Código detectado: ' + campo.value);
+            enviarCodigo();
+          }
+        }
+      );
+
+      detener.disabled = false;
+      mensaje('Cámara activa. Apunta al código de barras.');
+    } catch (error) {
+      detenerCamara();
+
+      let detalle = error && error.message
+        ? error.message
+        : String(error);
+
+      if (error && error.name === 'NotAllowedError') {
+        detalle = 'Permiso de cámara denegado. Permite Cámara en los ajustes del sitio de Chrome.';
+      } else if (error && error.name === 'NotFoundError') {
+        detalle = 'No se encontró una cámara en este dispositivo.';
+      } else if (error && error.name === 'NotReadableError') {
+        detalle = 'La cámara está ocupada por otra aplicación. Ciérrala e inténtalo otra vez.';
+      }
+
+      mensaje('No se pudo activar la cámara: ' + detalle);
+    }
+  }
+
+  activar.addEventListener('click', function() {
+    codigoEnviado = false;
+    activarCamara();
+  });
+
+  detener.addEventListener('click', function() {
     detenerCamara();
     mensaje('Cámara detenida.');
   });
 
-  enviar.addEventListener('click', () => {
-    const codigo = campo.value.trim();
-    if (!codigo) {
-      mensaje('Primero escribe un código de barras.');
-      return;
-    }
-    recibirCodigo(codigo);
-  });
+  document.getElementById('enviar').addEventListener('click', enviarCodigo);
 
-  campo.addEventListener('keydown', event => {
-    if (event.key === 'Enter') enviar.click();
+  campo.addEventListener('keydown', function(event) {
+    if (event.key === 'Enter') enviarCodigo();
   });
 
   window.addEventListener('beforeunload', detenerCamara);
