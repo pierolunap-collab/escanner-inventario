@@ -97,23 +97,37 @@
     estado.textContent = texto;
   }
 
-  function recibirCodigo(codigo) {
-    codigo = String(codigo || '').trim();
-    if (!codigo) return;
+  
+function recibirCodigo(codigo) {
+  codigo = String(codigo || '').trim();
 
-    campo.value = codigo;
-    mensaje('Código detectado: ' + codigo);
-
-    // Envía el código a la página principal si se abrió desde ella.
-    if (window.opener && !window.opener.closed) {
-      window.opener.postMessage({
-        tipo: 'CODIGO_BARRAS',
-        codigo: codigo
-      }, 'https://script.google.com');
-    }
-
-    detenerCamara();
+  if (!codigo) {
+    mensaje('Escribe o escanea un código de barras.');
+    return;
   }
+
+  campo.value = codigo;
+
+  if (window.opener && !window.opener.closed) {
+    window.opener.postMessage({
+      tipo: 'CODIGO_BARRAS',
+      codigo: codigo
+    }, '*');
+
+    mensaje(
+      'Código enviado: ' + codigo +
+      '. Regresa a la pestaña de Control de inventario.'
+    );
+  } else {
+    mensaje(
+      'Código leído: ' + codigo +
+      '. No se encontró la ventana de Control de inventario. ' +
+      'Abre primero la aplicación principal y luego pulsa Abrir lector de cámara.'
+    );
+  }
+
+  detenerCamara();
+}
 
   async function activarCamara() {
     if (ocupado) return;
