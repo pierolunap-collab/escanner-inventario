@@ -5,177 +5,219 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Escáner de inventario</title>
-  <script src="https://unpkg.com/@zxing/library@0.21.3/umd/index.min.js"></script>
   <style>
     body {
-      font-family: Arial, sans-serif;
-      background: #f1f5f9;
+      margin: 0;
       padding: 20px;
-      color: #172033;
+      background: #f2f5fa;
+      font-family: Arial, sans-serif;
+      color: #202938;
     }
     main {
-      max-width: 480px;
-      margin: auto;
+      max-width: 560px;
+      margin: 20px auto;
+      padding: 22px;
       background: white;
-      padding: 20px;
-      border-radius: 16px;
+      border-radius: 14px;
+      box-shadow: 0 3px 14px #0001;
     }
-    h1 { color: #1d4ed8; font-size: 24px; }
-    input, button {
+    h1 { font-size: 24px; }
+    button, input {
       width: 100%;
-      padding: 14px;
-      margin: 8px 0;
       box-sizing: border-box;
-      font-size: 16px;
+      min-height: 46px;
+      margin: 7px 0;
+      padding: 12px;
       border-radius: 8px;
+      font-size: 16px;
     }
-    input { border: 1px solid #cbd5e1; }
     button {
       border: 0;
-      background: #1d4ed8;
+      background: #174ea6;
       color: white;
       font-weight: bold;
+      cursor: pointer;
     }
     button:disabled { opacity: .6; }
-    #video {
+    input { border: 1px solid #ccd4df; }
+    video {
       display: none;
       width: 100%;
-      margin-top: 12px;
+      margin-top: 14px;
       border-radius: 10px;
-      background: black;
+      background: #111;
     }
-    #mensaje { line-height: 1.5; overflow-wrap: anywhere; }
+    #estado {
+      margin-top: 14px;
+      overflow-wrap: anywhere;
+      line-height: 1.5;
+    }
+    #codigoLeido {
+      font-size: 20px;
+      font-weight: bold;
+      overflow-wrap: anywhere;
+    }
   </style>
 </head>
 <body>
 <main>
   <h1>📦 Escáner de inventario</h1>
-  <p>Escanea el código de barras para consultar su ubicación.</p>
+  <p>Activa la cámara y apunta al código de barras.</p>
 
-  <button id="iniciar" onclick="iniciarCamara()">
-    📷 Activar cámara
-  </button>
+  <button id="activar">📷 Activar cámara</button>
+  <button id="detener" disabled>Detener cámara</button>
 
-  <video id="video" muted playsinline></video>
+  <video id="video" playsinline muted></video>
 
-  <button id="detener" onclick="detenerCamara()" disabled>
-    Detener cámara
-  </button>
+  <p id="estado" role="status" aria-live="polite">
+    Pulsa «Activar cámara» para comenzar.
+  </p>
 
   <hr>
 
-  <label for="codigo">O escribe el código manualmente</label>
-  <input id="codigo" placeholder="Código de barras">
-
-  <button onclick="consultarManual()">Consultar producto</button>
-  <p id="mensaje" role="status" aria-live="polite"></p>
+  <label for="codigo"><strong>O escribe el código manualmente</strong></label>
+  <input id="codigo" type="text" placeholder="Código de barras">
+  <button id="enviar">Enviar código a la aplicación</button>
 </main>
 
+<script src="https://unpkg.com/@zxing/browser@0.1.5/umd/index.min.js"></script>
 <script>
-  https://script.google.com/macros/s/AKfycbwXb0L8jLyzP3Pgt5jB5elqJTqhlY2EBTPvP0xENiaw4-G98ljeBRPniy06IlpPXetr3g/exec
-  const APP_URL = 'https://script.google.com/macros/s/AKfycbwXb0L8jLyzP3Pgt5jB5elqJTqhlY2EBTPvP0xENiaw4-G98ljeBRPniy06IlpPXetr3g/exec;
+  const activar = document.getElementById('activar');
+  const detener = document.getElementById('detener');
+  const video = document.getElementById('video');
+  const estado = document.getElementById('estado');
+  const campo = document.getElementById('codigo');
+  const enviar = document.getElementById('enviar');
 
   let lector = null;
   let controles = null;
-  let procesando = false;
+  let ocupado = false;
 
-  function mostrar(texto) {
-    document.getElementById('mensaje').textContent = texto;
+  function mensaje(texto) {
+    estado.textContent = texto;
   }
 
-  function validarURL() {
-    if (APP_URL.includes('PEGA_AQUI')) {
-      mostrar('Primero configura la URL de tu aplicación de Apps Script.');
-      return false;
-    }
-    return true;
-  }
-
-  function abrirProducto(codigo) {
+  function recibirCodigo(codigo) {
     codigo = String(codigo || '').trim();
-    if (!codigo || !validarURL()) return;
+    if (!codigo) return;
 
-    const destino = new URL(APP_URL);
-    destino.searchParams.set('codigo', codigo);
-    window.location.href = destino.toString();
-  }
+    campo.value = codigo;
+    mensaje('Código detectado: ' + codigo);
 
-  function consultarManual() {
-    abrirProducto(document.getElementById('codigo').value);
-  }
-
-  async function iniciarCamara() {
-    if (!window.isSecureContext ||
-        !navigator.mediaDevices?.getUserMedia) {
-      mostrar('La cámara requiere una página HTTPS y un navegador compatible.');
-      return;
-    }
-
-    if (typeof ZXing === 'undefined') {
-      mostrar('No se cargó el lector. Comprueba tu conexión a internet.');
-      return;
+    // Envía el código a la página principal si se abrió desde ella.
+    if (window.opener && !window.opener.closed) {
+      window.opener.postMessage({
+        tipo: 'CODIGO_BARRAS',
+        codigo: codigo
+      }, 'https://script.google.com');
     }
 
     detenerCamara();
-    procesando = false;
-    document.getElementById('iniciar').disabled = true;
-    mostrar('Solicitando permiso para usar la cámara...');
+  }
+
+  async function activarCamara() {
+    if (ocupado) return;
+    ocupado = true;
+    activar.disabled = true;
+    mensaje('Solicitando acceso a la cámara...');
 
     try {
-      lector = new ZXing.BrowserMultiFormatReader();
+      if (!window.isSecureContext) {
+        throw new Error(
+          'La página debe abrirse mediante HTTPS para utilizar la cámara.'
+        );
+      }
 
-      document.getElementById('video').style.display = 'block';
-      document.getElementById('detener').disabled = false;
+      if (!navigator.mediaDevices ||
+          !navigator.mediaDevices.getUserMedia) {
+        throw new Error(
+          'Este navegador no permite acceder a la cámara. Abre la página en Chrome.'
+        );
+      }
 
-      controles = await lector.decodeFromConstraints(
-        {
-          audio: false,
-          video: { facingMode: { ideal: 'environment' } }
-        },
-        document.getElementById('video'),
+      if (!window.ZXingBrowser) {
+        throw new Error(
+          'No se pudo cargar el lector de códigos. Revisa tu conexión a Internet y recarga la página.'
+        );
+      }
+
+      lector = new ZXingBrowser.BrowserMultiFormatReader();
+      video.style.display = 'block';
+
+      controles = await lector.decodeFromVideoDevice(
+        undefined,
+        video,
         (resultado, error) => {
-          if (resultado && !procesando) {
-            procesando = true;
-            const codigo = resultado.getText();
-            detenerCamara();
-            abrirProducto(codigo);
+          if (resultado) {
+            recibirCodigo(resultado.getText());
           }
         }
       );
 
-      mostrar('Cámara activa. Apunta al código de barras.');
-    } catch (e) {
+      detener.disabled = false;
+      mensaje('Cámara activada. Apunta al código de barras.');
+    } catch (error) {
       detenerCamara();
-      mostrar('No se pudo abrir la cámara: ' +
-        (e.message || e.name || 'error desconocido') +
-        '. Revisa los permisos del navegador.');
+      let detalle = error && error.message
+        ? error.message
+        : String(error);
+
+      if (error && error.name === 'NotAllowedError') {
+        detalle = 'Permiso de cámara denegado. En Chrome, pulsa el candado junto a la dirección, permite Cámara y vuelve a intentarlo.';
+      } else if (error && error.name === 'NotFoundError') {
+        detalle = 'No se encontró una cámara disponible en este dispositivo.';
+      } else if (error && error.name === 'NotReadableError') {
+        detalle = 'La cámara está siendo utilizada por otra aplicación. Ciérrala y vuelve a intentarlo.';
+      }
+
+      mensaje('No se pudo activar la cámara: ' + detalle);
     } finally {
-      document.getElementById('iniciar').disabled = false;
+      ocupado = false;
+      activar.disabled = false;
     }
   }
 
   function detenerCamara() {
-    try {
-      if (controles && controles.stop) controles.stop();
-    } catch (e) {}
-    controles = null;
+    if (controles) {
+      try { controles.stop(); } catch (e) {}
+      controles = null;
+    }
 
-    try {
-      if (lector) lector.reset();
-    } catch (e) {}
-    lector = null;
+    if (lector) {
+      try { lector.reset(); } catch (e) {}
+      lector = null;
+    }
 
-    const video = document.getElementById('video');
     if (video.srcObject) {
-      video.srcObject.getTracks().forEach(t => t.stop());
+      video.srcObject.getTracks().forEach(track => track.stop());
       video.srcObject = null;
     }
 
     video.style.display = 'none';
-    document.getElementById('detener').disabled = true;
+    detener.disabled = true;
   }
 
-  window.addEventListener('pagehide', detenerCamara);
+  activar.addEventListener('click', activarCamara);
+  detener.addEventListener('click', () => {
+    detenerCamara();
+    mensaje('Cámara detenida.');
+  });
+
+  enviar.addEventListener('click', () => {
+    const codigo = campo.value.trim();
+    if (!codigo) {
+      mensaje('Primero escribe un código de barras.');
+      return;
+    }
+    recibirCodigo(codigo);
+  });
+
+  campo.addEventListener('keydown', event => {
+    if (event.key === 'Enter') enviar.click();
+  });
+
+  window.addEventListener('beforeunload', detenerCamara);
 </script>
 </body>
 </html>
+
